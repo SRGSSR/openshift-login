@@ -85,6 +85,30 @@ kubectl get pods
 The `openshift-login` tool will handle the authentication process automatically.
 
 
+## How It Works
+
+The `openshift-login` tool simplifies authentication with OpenShift clusters. For every request `kubectl` executes, it will call `openshift-login`:
+
+1. **Setting Log Level**:
+   - Configures logging based on the `OPENSHIFT_LOGIN_LOGLEVEL` environment variable.
+
+2. **Using Kubernetes Exec Info**:
+   - Reads cluster context from the `KUBERNETES_EXEC_INFO` environment variable given by `kubectl`.
+
+3. **Caching Credentials**:
+   - Checks for valid cached credentials to avoid redundant logins.
+
+4. **Performing OAuth2 Authentication**:
+   - Uses OpenID Connect (OIDC) to fetch authentication and token endpoints from OpenShift API Server.
+   - Opens a browser for user login and retrieves an access token from OpenShift OAuth Server.
+
+5. **Returning Credentials**:
+   - Outputs the access token and expiration time in Kubernetes' `ExecCredential` format.
+   - Caches the credentials for future use.
+
+This ensures secure and efficient authentication while integrating seamlessly with Kubernetes.
+
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request on the [GitHub repository](https://github.com/SRGSSR/openshift-login).
