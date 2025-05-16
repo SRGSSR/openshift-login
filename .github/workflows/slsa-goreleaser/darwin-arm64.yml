@@ -1,0 +1,8 @@
+version: 1
+env:
+  - GO111MODULE=on
+flags:
+  - -trimpath
+goos: darwin
+goarch: arm64
+binary: openshift-login-{{ .Os }}-{{ .Arch }}

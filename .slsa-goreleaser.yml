@@ -1,3 +1,0 @@
-# Version for this file.
-version: 1
-binary: openshift-login-{{ .Os }}-{{ .Arch }}

@@ -33,4 +33,4 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v2.1.0
     with:
       go-version-file: go.mod
-
+      config-file: .github/workflows/slsa-goreleaser/${{matrix.os}}-${{matrix.arch}}.yml
