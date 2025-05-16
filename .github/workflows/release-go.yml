@@ -21,6 +21,7 @@ jobs:
       contents: write # To upload release assets.
       actions: read   # To read workflow path.
     strategy:
+      fail-fast: false
       matrix:
         os:
           - linux
