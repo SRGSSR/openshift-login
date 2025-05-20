@@ -132,6 +132,13 @@ func main() {
 			logger.Warn("Failed to determine home directory", slog.Any("error", err))
 		}
 	}
+
+	// exit if not interactive
+	if !execCredential.Spec.Interactive {
+		logger.Error("Not executed interactivly, exiting. Please start interactive authentication process from a terminal.")
+		os.Exit(1)
+	}
+
 	oidcDiscoveryURL := fmt.Sprintf("%s/.well-known/oauth-authorization-server", execCredential.Spec.Cluster.Server)
 	logger.Info("OIDC Discovery URL", slog.String("url", oidcDiscoveryURL))
 
