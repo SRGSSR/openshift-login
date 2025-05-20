@@ -64,7 +64,7 @@ func main() {
 	case "error":
 		logLevel = slog.LevelError
 	default:
-		logLevel = slog.LevelWarn
+		logLevel = slog.LevelInfo
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
@@ -72,12 +72,12 @@ func main() {
 	env := os.Getenv("KUBERNETES_EXEC_INFO")
 	if env == "" {
 		logger.Error("KUBERNETES_EXEC_INFO is not set")
-		return
+		os.Exit(1)
 	}
 	var execCredential clientauthenticationv1.ExecCredential
 	if err := json.Unmarshal([]byte(env), &execCredential); err != nil {
 		logger.Error("Error unmarshalling KUBERNETES_EXEC_INFO", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	if execCredential.Spec.Cluster != nil {
 		home, err := os.UserHomeDir()
@@ -87,15 +87,15 @@ func main() {
 				name := sanitize(u.Host)
 				cacheDir := filepath.Join(home, ".kube", "cache", "openshift-login")
 				cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s-execCredential.json", name))
-				logger.Info("Checking for cached credentials", slog.String("path", cacheFile))
+				logger.Debug("Checking for cached credentials", slog.String("path", cacheFile))
 				if data, err := os.ReadFile(cacheFile); err == nil {
-					logger.Info("Found cache file, attempting to unmarshal")
+					logger.Debug("Found cache file, attempting to unmarshal")
 					var cached clientauthenticationv1.ExecCredential
 					if err := json.Unmarshal(data, &cached); err == nil &&
 						cached.Status != nil &&
 						cached.Status.ExpirationTimestamp != nil &&
 						cached.Status.ExpirationTimestamp.After(time.Now()) {
-						logger.Info("Cache is not expired, checking with Kubernetes API")
+						logger.Debug("Cache is not expired, checking with Kubernetes API")
 						// Check with Kubernetes API if token is still valid
 						req, err := http.NewRequest("GET", execCredential.Spec.Cluster.Server+"/api", nil)
 						if err == nil {
@@ -105,9 +105,9 @@ func main() {
 							if err == nil {
 								defer resp.Body.Close()
 								if resp.StatusCode == 200 {
-									logger.Info("Cache is valid, returning cached credentials")
+									logger.Debug("Cache is valid, returning cached credentials")
 									fmt.Println(string(data))
-									return
+									os.Exit(0)
 								} else if resp.StatusCode == 401 {
 									logger.Warn("Cached token rejected by API, ignoring cache", slog.Int("status", resp.StatusCode))
 								} else {
@@ -120,10 +120,10 @@ func main() {
 							logger.Warn("Error creating request to Kubernetes API, ignoring cache", slog.Any("error", err))
 						}
 					} else {
-						logger.Info("Cache is invalid or expired")
+						logger.Debug("Cache is invalid or expired")
 					}
 				} else {
-					logger.Info("No valid cache file found", slog.Any("error", err))
+					logger.Debug("No valid cache file found", slog.Any("error", err))
 				}
 			} else {
 				logger.Warn("Failed to parse cluster server URL", slog.Any("error", err))
@@ -140,29 +140,29 @@ func main() {
 	}
 
 	oidcDiscoveryURL := fmt.Sprintf("%s/.well-known/oauth-authorization-server", execCredential.Spec.Cluster.Server)
-	logger.Info("OIDC Discovery URL", slog.String("url", oidcDiscoveryURL))
+	logger.Debug("OIDC Discovery URL", slog.String("url", oidcDiscoveryURL))
 
 	resp, err := http.Get(oidcDiscoveryURL)
 	if err != nil {
 		logger.Error("Error getting OIDC discovery URL", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	defer resp.Body.Close()
 	var oidcDiscoveryMap map[string]interface{}
 	decoder := json.NewDecoder(resp.Body)
 	if err := decoder.Decode(&oidcDiscoveryMap); err != nil {
 		logger.Error("Error decoding OIDC discovery response", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	authEndpoint, ok := oidcDiscoveryMap["authorization_endpoint"].(string)
 	if !ok {
 		logger.Error("authorization_endpoint not found in OIDC discovery response")
-		return
+		os.Exit(1)
 	}
 	tokenEndpoint, ok := oidcDiscoveryMap["token_endpoint"].(string)
 	if !ok {
 		logger.Error("token_endpoint not found in OIDC discovery response")
-		return
+		os.Exit(1)
 	}
 
 	p := oauth2.GenerateVerifier()
@@ -184,6 +184,7 @@ func main() {
 		LocalServerCallbackPath: "/callback",
 		TokenRequestOptions:     tokenRequestOptions(p),
 		LocalServerReadyChan:    ready,
+		Logf:                    logger.Debug,
 	}
 
 	ctx := context.Background()
@@ -207,12 +208,12 @@ func main() {
 			return fmt.Errorf("could not get a token: %w", err)
 		}
 		token = tok
-		logger.Info("You got a valid token", slog.Time("expiry", token.Expiry))
+		logger.Debug("You got a valid token", slog.Time("expiry", token.Expiry))
 		return nil
 	})
 	if err := eg.Wait(); err != nil {
 		logger.Error("authorization error", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 
 	execCredential.Status = &clientauthenticationv1.ExecCredentialStatus{
@@ -222,7 +223,7 @@ func main() {
 	output, err := json.Marshal(execCredential)
 	if err != nil {
 		logger.Error("Error marshalling ExecCredential", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	fmt.Println(string(output))
 
@@ -230,26 +231,26 @@ func main() {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		logger.Error("cannot determine home dir", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	// parse cluster server URL
 	u, err := url.Parse(execCredential.Spec.Cluster.Server)
 	if err != nil {
 		logger.Error("cannot parse cluster server URL", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	// sanitize host:port into a safe directory name
 	name := sanitize(u.Host)
 	cacheDir := filepath.Join(home, ".kube", "cache", "openshift-login")
 	if err := os.MkdirAll(cacheDir, 0700); err != nil {
 		logger.Error("cannot create cache dir", slog.Any("error", err))
-		return
+		os.Exit(1)
 	}
 	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s-execCredential.json", name))
 	if err := os.WriteFile(cacheFile, output, 0600); err != nil {
 		logger.Warn("cannot write cache file", slog.Any("error", err))
 	} else {
-		logger.Info("cached execCredential", slog.String("path", cacheFile))
+		logger.Debug("cached execCredential", slog.String("path", cacheFile))
 	}
 	// --- end cache logic ---
 }
