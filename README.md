@@ -14,10 +14,10 @@
 
 You can download the latest release of `openshift-login` from the [GitHub Releases page](https://github.com/SRGSSR/openshift-login/releases).
 
-For example, to download version `v0.0.7` for Linux (amd64):
+For example, to download version `v0.0.8` for Linux (amd64):
 
 ```bash
-curl -L -o openshift-login https://github.com/SRGSSR/openshift-login/releases/download/v0.0.7/openshift-login-linux-amd64
+curl -L -o openshift-login https://github.com/SRGSSR/openshift-login/releases/download/v0.0.8/openshift-login-linux-amd64
 chmod +x openshift-login
 sudo mv openshift-login /usr/local/bin/
 ```
