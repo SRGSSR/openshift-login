@@ -69,7 +69,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
-	idp := os.Getenv("OPENSHIFT_LOGIN_IDP")
+	idp := strings.TrimSpace(os.Getenv("OPENSHIFT_LOGIN_IDP"))
 	env := os.Getenv("KUBERNETES_EXEC_INFO")
 	if env == "" {
 		logger.Error("KUBERNETES_EXEC_INFO is not set")
