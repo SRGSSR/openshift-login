@@ -69,6 +69,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+	idp := os.Getenv("OPENSHIFT_LOGIN_IDP")
 	env := os.Getenv("KUBERNETES_EXEC_INFO")
 	if env == "" {
 		logger.Error("KUBERNETES_EXEC_INFO is not set")
@@ -166,6 +167,13 @@ func main() {
 	}
 
 	p := oauth2.GenerateVerifier()
+	authCodeOptions := []oauth2.AuthCodeOption{
+		oauth2.S256ChallengeOption(p),
+	}
+	if idp != "" {
+		logger.Debug("Setting idp query parameter to skip identity provider chooser", slog.String("idp", idp))
+		authCodeOptions = append(authCodeOptions, oauth2.SetAuthURLParam("idp", idp))
+	}
 	ready := make(chan string, 1)
 	defer close(ready)
 	cfg := oauth2cli.Config{
@@ -176,9 +184,7 @@ func main() {
 				TokenURL: tokenEndpoint,
 			},
 		},
-		AuthCodeOptions: []oauth2.AuthCodeOption{
-			oauth2.S256ChallengeOption(p),
-		},
+		AuthCodeOptions:         authCodeOptions,
 		RedirectURLHostname:     "127.0.0.1",
 		LocalServerBindAddress:  []string{"127.0.0.1:33831"},
 		LocalServerCallbackPath: "/callback",

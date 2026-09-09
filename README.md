@@ -62,6 +62,8 @@ users:
       env:
       - name: OPENSHIFT_LOGIN_LOGLEVEL
         value: warn
+      - name: OPENSHIFT_LOGIN_IDP
+        value: my-idp-name
       interactiveMode: Always
       provideClusterInfo: true
 ```
@@ -91,6 +93,10 @@ The `openshift-login` tool simplifies authentication with OpenShift clusters. Fo
 
 1. **Setting Log Level**:
    - Configures logging based on the `OPENSHIFT_LOGIN_LOGLEVEL` environment variable.
+   - Optionally set `OPENSHIFT_LOGIN_IDP` to the name of an identity provider configured on the
+     OpenShift OAuth server (e.g. `my-idp-name`). When set, it is passed as the `idp` query
+     parameter on the authorize request, which skips OpenShift's identity-provider chooser page
+     and redirects straight to that IdP. Leave unset to keep the default chooser behavior.
 
 2. **Using Kubernetes Exec Info**:
    - Reads cluster context from the `KUBERNETES_EXEC_INFO` environment variable given by `kubectl`.
