@@ -62,7 +62,7 @@ users:
       env:
       - name: OPENSHIFT_LOGIN_LOGLEVEL
         value: warn
-      interactiveMode: Always
+      interactiveMode: IfAvailable
       provideClusterInfo: true
 ```
 
