@@ -6,7 +6,6 @@ require (
 	github.com/int128/oauth2cli v1.15.1
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	golang.org/x/oauth2 v0.28.0
-	golang.org/x/sync v0.12.0
 	k8s.io/apimachinery v0.33.0
 	k8s.io/client-go v0.33.0
 )
@@ -21,6 +20,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
