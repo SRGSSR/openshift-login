@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -17,7 +18,6 @@ import (
 	"github.com/int128/oauth2cli"
 	"github.com/pkg/browser"
 	"golang.org/x/oauth2"
-	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauthenticationv1 "k8s.io/client-go/pkg/apis/clientauthentication/v1"
 )
@@ -166,16 +166,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := oauth2.GenerateVerifier()
-	authCodeOptions := []oauth2.AuthCodeOption{
-		oauth2.S256ChallengeOption(p),
-	}
 	if idp != "" {
 		logger.Debug("Setting idp query parameter to skip identity provider chooser", slog.String("idp", idp))
-		authCodeOptions = append(authCodeOptions, oauth2.SetAuthURLParam("idp", idp))
 	}
-	ready := make(chan string, 1)
-	defer close(ready)
 	cfg := oauth2cli.Config{
 		OAuth2Config: oauth2.Config{
 			ClientID: "openshift-cli-client",
@@ -184,42 +177,102 @@ func main() {
 				TokenURL: tokenEndpoint,
 			},
 		},
-		AuthCodeOptions:         authCodeOptions,
 		RedirectURLHostname:     "127.0.0.1",
 		LocalServerBindAddress:  []string{"127.0.0.1:33831"},
 		LocalServerCallbackPath: "/callback",
-		TokenRequestOptions:     tokenRequestOptions(p),
-		LocalServerReadyChan:    ready,
 		Logf:                    logger.Debug,
 	}
 
+	// A failed login (e.g. the browser window is logged in as the wrong user) stops the
+	// local server. Restart it on the same URL so the login can be retried in another window.
 	ctx := context.Background()
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		select {
-		case url := <-ready:
-			logger.Info("Open browser for authentication", slog.String("url", url))
-			if err := browser.OpenURL(url); err != nil {
-				logger.Warn("Could not open the browser", slog.Any("error", err))
+
+	// On a terminal the browser only opens after pressing Enter, so the URL can be opened in
+	// another browser window instead, e.g. one that is logged in as the right user.
+	var enter chan struct{}
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		enter = make(chan struct{})
+		go func() {
+			r := bufio.NewReader(os.Stdin)
+			for {
+				if _, err := r.ReadString('\n'); err != nil {
+					return
+				}
+				enter <- struct{}{}
 			}
-			return nil
-		case <-ctx.Done():
-			return fmt.Errorf("context done while waiting for authorization: %w", ctx.Err())
+		}()
+	}
+	openBrowser := func(url string) {
+		if err := browser.OpenURL(url); err != nil {
+			logger.Warn("Could not open the browser", slog.Any("error", err))
 		}
-	})
+	}
+	loginURL := ""
 	var token *oauth2.Token
-	eg.Go(func() error {
-		tok, err := oauth2cli.GetToken(ctx, cfg)
-		if err != nil {
-			return fmt.Errorf("could not get a token: %w", err)
+	for attempt := 1; token == nil; attempt++ {
+		p := oauth2.GenerateVerifier()
+		cfg.AuthCodeOptions = []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(p)}
+		if idp != "" {
+			cfg.AuthCodeOptions = append(cfg.AuthCodeOptions, oauth2.SetAuthURLParam("idp", idp))
 		}
-		token = tok
-		logger.Debug("You got a valid token", slog.Time("expiry", token.Expiry))
-		return nil
-	})
-	if err := eg.Wait(); err != nil {
-		logger.Error("authorization error", slog.Any("error", err))
-		os.Exit(1)
+		cfg.TokenRequestOptions = tokenRequestOptions(p)
+		ready := make(chan string, 1)
+		cfg.LocalServerReadyChan = ready
+
+		type result struct {
+			token *oauth2.Token
+			err   error
+		}
+		done := make(chan result, 1)
+		go func(cfg oauth2cli.Config) {
+			tok, err := oauth2cli.GetToken(ctx, cfg)
+			done <- result{tok, err}
+		}(cfg)
+
+		started := false
+		var res result
+	wait:
+		for {
+			select {
+			case url := <-ready:
+				started = true
+				loginURL = url
+				// stdout is reserved for the ExecCredential, so print the URL to stderr
+				switch {
+				case attempt > 1:
+					fmt.Fprintf(os.Stderr, "Waiting for login. Open this URL in the correct browser window (Ctrl+C to abort):\n\n    %s\n\n", url)
+				case enter != nil:
+					fmt.Fprintf(os.Stderr, "Open this URL in the browser window you want to log in with:\n\n    %s\n\nOr press Enter to open it in the default browser.\n", url)
+				default:
+					fmt.Fprintf(os.Stderr, "Opening browser for authentication. If the wrong browser window opens, open this URL manually:\n\n    %s\n\n", url)
+					openBrowser(url)
+				}
+			case <-enter:
+				if loginURL != "" {
+					openBrowser(loginURL)
+				}
+			case res = <-done:
+				break wait
+			}
+		}
+		// the ready URL is buffered, so it may still be pending when the result arrives
+		select {
+		case <-ready:
+			started = true
+		default:
+		}
+
+		if res.err == nil {
+			token = res.token
+			logger.Debug("You got a valid token", slog.Time("expiry", token.Expiry))
+			break
+		}
+		if !started {
+			// the local server could not be started, retrying will not help
+			logger.Error("authorization error", slog.Any("error", res.err))
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Login failed: %v\n", res.err)
 	}
 
 	execCredential.Status = &clientauthenticationv1.ExecCredentialStatus{

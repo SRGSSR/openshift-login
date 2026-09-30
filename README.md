@@ -106,7 +106,10 @@ The `openshift-login` tool simplifies authentication with OpenShift clusters. Fo
 
 4. **Performing OAuth2 Authentication**:
    - Uses OpenID Connect (OIDC) to fetch authentication and token endpoints from OpenShift API Server.
-   - Opens a browser for user login and retrieves an access token from OpenShift OAuth Server.
+   - Prints the login URL to the terminal. Open it in the browser window (or profile) that is logged
+     in as the right user, or press Enter to open it in the default browser. Without a terminal, the
+     default browser is opened directly.
+   - Retrieves an access token from OpenShift OAuth Server once the login succeeds.
 
 5. **Returning Credentials**:
    - Outputs the access token and expiration time in Kubernetes' `ExecCredential` format.
