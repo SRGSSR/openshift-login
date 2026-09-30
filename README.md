@@ -86,6 +86,22 @@ kubectl get pods
 
 The `openshift-login` tool will handle the authentication process automatically.
 
+### Logout
+
+To end a session, run:
+
+```bash
+# log out of all clusters with a cached session
+openshift-login logout
+
+# log out of a single cluster (host, host:port or full server URL)
+openshift-login logout api.example-cluster.openshiftapps.com
+```
+
+This revokes the access token on the OpenShift OAuth server (like `oc logout`) and removes the
+cached credentials, so the next `kubectl` command starts a new login. The browser session at your
+identity provider is not affected.
+
 
 ## How It Works
 
