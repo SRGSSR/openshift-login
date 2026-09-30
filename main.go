@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -185,6 +186,28 @@ func main() {
 	// A failed login (e.g. the browser window is logged in as the wrong user) stops the
 	// local server. Restart it on the same URL so the login can be retried in another window.
 	ctx := context.Background()
+
+	// On a terminal the browser only opens after pressing Enter, so the URL can be opened in
+	// another browser window instead, e.g. one that is logged in as the right user.
+	var enter chan struct{}
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		enter = make(chan struct{})
+		go func() {
+			r := bufio.NewReader(os.Stdin)
+			for {
+				if _, err := r.ReadString('\n'); err != nil {
+					return
+				}
+				enter <- struct{}{}
+			}
+		}()
+	}
+	openBrowser := func(url string) {
+		if err := browser.OpenURL(url); err != nil {
+			logger.Warn("Could not open the browser", slog.Any("error", err))
+		}
+	}
+	loginURL := ""
 	var token *oauth2.Token
 	for attempt := 1; token == nil; attempt++ {
 		p := oauth2.GenerateVerifier()
@@ -213,14 +236,20 @@ func main() {
 			select {
 			case url := <-ready:
 				started = true
+				loginURL = url
 				// stdout is reserved for the ExecCredential, so print the URL to stderr
-				if attempt == 1 {
-					fmt.Fprintf(os.Stderr, "Opening browser for authentication. If the wrong browser window opens, open this URL manually:\n\n    %s\n\n", url)
-					if err := browser.OpenURL(url); err != nil {
-						logger.Warn("Could not open the browser", slog.Any("error", err))
-					}
-				} else {
+				switch {
+				case attempt > 1:
 					fmt.Fprintf(os.Stderr, "Waiting for login. Open this URL in the correct browser window (Ctrl+C to abort):\n\n    %s\n\n", url)
+				case enter != nil:
+					fmt.Fprintf(os.Stderr, "Open this URL in the browser window you want to log in with:\n\n    %s\n\nOr press Enter to open it in the default browser.\n", url)
+				default:
+					fmt.Fprintf(os.Stderr, "Opening browser for authentication. If the wrong browser window opens, open this URL manually:\n\n    %s\n\n", url)
+					openBrowser(url)
+				}
+			case <-enter:
+				if loginURL != "" {
+					openBrowser(loginURL)
 				}
 			case res = <-done:
 				break wait
