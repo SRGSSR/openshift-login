@@ -69,6 +69,9 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+	if len(os.Args) > 1 && os.Args[1] == "logout" {
+		os.Exit(runLogout(logger, os.Args[2:]))
+	}
 	idp := strings.TrimSpace(os.Getenv("OPENSHIFT_LOGIN_IDP"))
 	env := os.Getenv("KUBERNETES_EXEC_INFO")
 	if env == "" {
